@@ -2637,6 +2637,24 @@ a.summary,  a.summary:hover {
 	}
 }
 
+.attachments-render-selector {
+	display: block;
+	float: right;
+	margin-top: 10px;
+	font-size: 1.7em;
+
+	.selector-label {
+		display: inline-block;
+		margin-left: 10px;
+		margin-right: 10px;
+		vertical-align: super;
+	}
+
+	.switch {
+		vertical-align: super;
+	}
+}
+
 
 
 #DashboardMenu {

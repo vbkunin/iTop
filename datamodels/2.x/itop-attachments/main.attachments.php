@@ -257,8 +257,8 @@ class AttachmentPlugIn implements iApplicationUIExtension, iApplicationObjectExt
 		}
 
 		//TODO factory to choose proper renderer (using config param ? GUI switch widget ? ... ?)
-		$oAttachmentsRenderer = new IconAttachmentsRenderer();
-//		$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer();
+//		$oAttachmentsRenderer = new IconAttachmentsRenderer();
+		$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer();
 		$oPage->add('<fieldset>');
 		$oPage->add('<legend>'.Dict::S('Attachments:FieldsetTitle').'</legend>');
 
@@ -1023,6 +1023,19 @@ class TableDetailsAttachmentsRenderer implements iAttachmentsRendering
 	 */
 	public function RenderViewAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled)
 	{
+		$sRenderIcons = Dict::S('Attachments:Render:Icons'); //TODO add keys in dict files
+		$sRenderTable = Dict::S('Attachments:Render:Table');
+		$oPage->add(
+			<<<HTML
+<div class="attachments-render-selector">
+	<div class="selector-label"><i class="fa fa-th-large" aria-hidden="true" title="$sRenderIcons"></i></div>
+	<label class="switch"><input type="checkbox" onchange="ToggleAttachmentsRenderSelector();" checked="">
+	<span class="slider round"></span></label>
+	<div class="selector-label"><i class="fa fa-align-justify" aria-hidden="true" title="$sRenderTable"></i></div>
+</div>
+HTML
+		);
+
 		$oPage->add('<table class="listResults attachmentsList">'.PHP_EOL);
 		$oPage->add('<thead>'.PHP_EOL);
 		$oPage->add('  <th>'.Dict::S('Attachments:File:Thumbnail').'</th>'.PHP_EOL);

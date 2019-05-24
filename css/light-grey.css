@@ -2280,6 +2280,21 @@ a.summary, a.summary:hover {
   margin-right: 10px;
   vertical-align: super;
 }
+.attachments-render-selector {
+  display: block;
+  float: right;
+  margin-top: 10px;
+  font-size: 1.7em;
+}
+.attachments-render-selector .selector-label {
+  display: inline-block;
+  margin-left: 10px;
+  margin-right: 10px;
+  vertical-align: super;
+}
+.attachments-render-selector .switch {
+  vertical-align: super;
+}
 #DashboardMenu {
   display: block;
   float: right;
