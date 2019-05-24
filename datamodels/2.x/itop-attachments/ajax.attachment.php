@@ -51,9 +51,9 @@ try
 			'preview' => 'false',
 			'msg' => ''
 		);
-		$sObjClass = stripslashes(utils::ReadParam('obj_class', '', false, 'class'));
+		$sClass = stripslashes(utils::ReadParam('obj_class', '', false, 'class'));
 		$sTempId = utils::ReadParam('temp_id', '', false, 'transaction_id');
-		if (empty($sObjClass))
+		if (empty($sClass))
 		{
 			$aResult['error'] = "Missing argument 'obj_class'";
 		}
@@ -69,7 +69,7 @@ try
 				$oAttachment = MetaModel::NewObject('Attachment');
 				$oAttachment->Set('expire', time() + MetaModel::GetConfig()->Get('draft_attachments_lifetime'));
 				$oAttachment->Set('temp_id', $sTempId);
-				$oAttachment->Set('item_class', $sObjClass);
+				$oAttachment->Set('item_class', $sClass);
 				$oAttachment->SetDefaultOrgId();
 				$oAttachment->Set('contents', $oDoc);
 				$iAttId = $oAttachment->DBInsert();
@@ -98,8 +98,36 @@ try
 	break;
 
 		case 'toggle_attachments_render':
+			$sClass = utils::ReadParam('objclass', '');
+			$sId = utils::ReadParam('objkey', '');
+			$oObject = MetaModel::GetObject($sClass, $sId);
+			$bEditMode = utils::ReadParam('edit_mode', 0);
+
+			$bAttachmentsRenderIcons = !(appUserPreferences::GetPref('attachements_render_icons', true));
+			appUserPreferences::UnsetPref('attachements_render_icons');
+			appUserPreferences::SetPref('attachements_render_icons', $bAttachmentsRenderIcons);
+
 			$oPage->SetContentType('text/html');
-			$oPage->add('TUTU');
+
+			if ($bAttachmentsRenderIcons)
+			{
+				$oAttachmentsRenderer = new IconAttachmentsRenderer($oPage, $oObject);
+			}
+			else
+			{
+				$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer($oPage, $oObject);
+			}
+
+			$bIsReadOnlyState = AttachmentPlugIn::IsReadonlyState($oObject, $oObject->GetState(), AttachmentPlugIn::ENUM_GUI_BACKOFFICE);
+			if ($bEditMode && !$bIsReadOnlyState)
+			{
+				$oAttachmentsRenderer->RenderEditAttachmentsList();
+			}
+			else
+			{
+				$oAttachmentsRenderer->RenderViewAttachmentsList();
+			}
+
 			break;
 
 		default:

@@ -2640,7 +2640,6 @@ a.summary,  a.summary:hover {
 .attachments-render-selector {
 	display: block;
 	float: right;
-	margin-top: 10px;
 	font-size: 1.7em;
 
 	.selector-label {
@@ -2659,6 +2658,9 @@ a.summary,  a.summary:hover {
 	}
 }
 
+#AttachmentsContent {
+	clear: both;
+}
 
 
 #DashboardMenu {

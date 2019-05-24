@@ -240,61 +240,70 @@ class AttachmentPlugIn implements iApplicationUIExtension, iApplicationObjectExt
 	{
 		// Exit here if the class is not allowed
 		if (!$this->IsTargetObject($oObject)) return;
-		
-		$oSearch = DBObjectSearch::FromOQL("SELECT Attachment WHERE item_class = :class AND item_id = :item_id");
-		$oSet = new DBObjectSet($oSearch, array(), array('class' => get_class($oObject), 'item_id' => $oObject->GetKey()));
 
-		$iTransactionId = $oPage->GetTransactionId();
-		$sTempId = utils::GetUploadTempId($iTransactionId);
-		$oSearchTemp = DBObjectSearch::FromOQL("SELECT Attachment WHERE temp_id = :temp_id");
-		$oSetTemp = new DBObjectSet($oSearchTemp, array(), array('temp_id' => $sTempId));
-
-		if ($this->GetAttachmentsPosition() == 'relations')
+		$bAttachmentsRenderIcons = appUserPreferences::GetPref('attachements_render_icons', true);
+		if ($bAttachmentsRenderIcons)
 		{
-			$iCount = $oSet->Count() + $oSetTemp->Count();
+			$oAttachmentsRenderer = new IconAttachmentsRenderer($oPage, $oObject);
+		}
+		else
+		{
+			$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer($oPage, $oObject);
+		}
+
+		if ($this->GetAttachmentsPosition() === 'relations')
+		{
+			$iCount = $oAttachmentsRenderer->getOAttachmentsSet()->Count() + $oAttachmentsRenderer->getOTempAttachmentsSet()->Count();
 			$sTitle = ($iCount > 0)? Dict::Format('Attachments:TabTitle_Count', $iCount) : Dict::S('Attachments:EmptyTabTitle');
 			$oPage->SetCurrentTab($sTitle);
 		}
 
-		//TODO factory to choose proper renderer (using config param ? GUI switch widget ? ... ?)
-//		$oAttachmentsRenderer = new IconAttachmentsRenderer();
-		$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer();
 		$oPage->add('<fieldset>');
 		$oPage->add('<legend>'.Dict::S('Attachments:FieldsetTitle').'</legend>');
 
-		$this->AddRenderSwitchHtml($oPage);
+		$this->AddRenderSwitchHtml($oPage, $oObject, $bEditMode);
 
 		$oPage->add('<div id="AttachmentsContent">');
-		$bIsReadOnlyState = AttachmentPlugIn::IsReadonlyState($oObject, $oObject->GetState(),
-			AttachmentPlugIn::ENUM_GUI_BACKOFFICE);
+		$bIsReadOnlyState = AttachmentPlugIn::IsReadonlyState($oObject, $oObject->GetState(), AttachmentPlugIn::ENUM_GUI_BACKOFFICE);
 		if ($bEditMode && !$bIsReadOnlyState)
 		{
-			$oAttachmentsRenderer->RenderEditAttachmentsList($oPage, $oSet, $oSetTemp, $oObject, $bEditMode, $this->m_bDeleteEnabled);
+			$oAttachmentsRenderer->RenderEditAttachmentsList();
 		}
 		else
 		{
-			$oAttachmentsRenderer->RenderViewAttachmentsList($oPage, $oSet, $oSetTemp, $oObject, $bEditMode, $this->m_bDeleteEnabled);
+			$oAttachmentsRenderer->RenderViewAttachmentsList();
 		}
 		$oPage->add('</div>');
 
 		$oPage->add('</fieldset>');
 	}
 
-	private function AddRenderSwitchHtml($oPage)
+	/**
+	 * @param \WebPage $oPage
+	 * @param \DBObject $oObject
+	 * @param boolean $bEditMode
+	 */
+	private function AddRenderSwitchHtml($oPage, $oObject, $bEditMode)
 	{
 		$sRenderIcons = Dict::S('Attachments:Render:Icons'); //TODO add keys in dict files
 		$sRenderTable = Dict::S('Attachments:Render:Table');
+		$bAttachmentsRenderIcons = appUserPreferences::GetPref('attachements_render_icons', true);
+		$sInputChecked = ($bAttachmentsRenderIcons ? '' : 'checked');
 		$oPage->add(
 			<<<HTML
 		<div class="attachments-render-selector">
 			<div class="selector-label"><i class="fa fa-th-large" aria-hidden="true" title="$sRenderIcons"></i></div>
-			<label class="switch"><input type="checkbox" onchange="ToggleAttachmentsRenderSelector();" checked="">
-			<span class="slider round"></span></label>
+			<label class="switch"><input type="checkbox" onchange="ToggleAttachmentsRenderSelector();" 
+			$sInputChecked>
+			<span class="slider round"></span></input></label>
 			<div class="selector-label"><i class="fa fa-align-justify" aria-hidden="true" title="$sRenderTable"></i></div>
 		</div>
 HTML
 		);
 
+		$sObjClass = get_class($oObject);
+		$iObjKey = $oObject->GetKey();
+		$iEditMode = $bEditMode ? 1 : 0;
 		$oPage->add_script(
 			<<<EOF
 					function ToggleAttachmentsRenderSelector()
@@ -302,7 +311,7 @@ HTML
 						var sContentNode = '#AttachmentsContent';
 						$(sContentNode).block();
 						$.post(GetAbsoluteUrlModulesRoot()+'itop-attachments/ajax.attachment.php',
-						   { operation: 'toggle_attachments_render' },
+						   { operation: 'toggle_attachments_render', objclass: '$sObjClass', objkey: $iObjKey, edit_mode: $iEditMode},
 						   function(data) {
 							 $(sContentNode).html(data);
 							 $(sContentNode).unblock();
@@ -715,45 +724,79 @@ class AttachmentsHelper
 /**
  * @see \AttachmentPlugIn::DisplayAttachments()
  */
-interface iAttachmentsRendering
+abstract class AbstractAttachmentsRendering
 {
-	/**
-	 * @param \WebPage $oPage
-	 * @param \DBObjectSet $oAttachmentsSet
-	 * @param $oTempAttachmentsSet
-	 * @param \DBObject $oObject
-	 * @param bool $bEditMode
-	 * @param bool $bDeleteEnabled
-	 */
-	public function RenderEditAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled);
+	/** @var \DBObject */
+	protected $oObject;
+	/** @var \WebPage */
+	protected $oPage;
+	/** @var \DBObjectSet */
+	protected $oTempAttachmentsSet;
+	/** @var \DBObjectSet */
+	protected $oAttachmentsSet;
 
 	/**
 	 * @param \WebPage $oPage
-	 * @param \DBObjectSet $oAttachmentsSet
-	 * @param $oTempAttachmentsSet
 	 * @param \DBObject $oObject
-	 * @param bool $bEditMode
-	 * @param bool $bDeleteEnabled
+	 *
+	 * @throws \OQLException
 	 */
-	public function RenderViewAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled);
+	public function __construct(\WebPage $oPage, \DBObject $oObject)
+	{
+		$this->oObject = $oObject;
+		$this->oPage = $oPage;
+
+		$oSearch = DBObjectSearch::FromOQL("SELECT Attachment WHERE item_class = :class AND item_id = :item_id");
+		$this->oAttachmentsSet = new DBObjectSet($oSearch, array(), array('class' => get_class($oObject), 'item_id' => $oObject->GetKey()));
+
+		$iTransactionId = $oPage->GetTransactionId();
+		$sTempId = utils::GetUploadTempId($iTransactionId);
+		$oSearchTemp = DBObjectSearch::FromOQL("SELECT Attachment WHERE temp_id = :temp_id");
+		$this->oTempAttachmentsSet = new DBObjectSet($oSearchTemp, array(), array('temp_id' => $sTempId));
+	}
+
+	/**
+	 * @return \DBObjectSet
+	 */
+	public function getOTempAttachmentsSet()
+	{
+		return $this->oTempAttachmentsSet;
+	}
+
+	/**
+	 * @return \DBObjectSet
+	 */
+	public function getOAttachmentsSet()
+	{
+		return $this->oAttachmentsSet;
+	}
+
+	/**
+	 */
+	abstract public function RenderEditAttachmentsList();
+
+	/**
+	 */
+	abstract public function RenderViewAttachmentsList();
 }
 
 
-class IconAttachmentsRenderer implements iAttachmentsRendering
+class IconAttachmentsRenderer extends AbstractAttachmentsRendering
 {
 	/**
 	 * @inheritDoc
 	 */
-	public function RenderEditAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled)
+	public function RenderEditAttachmentsList()
 	{
-		$this->AddSharedMarkup($oPage);
+		$this->AddSharedMarkup($this->oPage);
 
-		$iTransactionId = $oPage->GetTransactionId();
+		$iTransactionId = $this->oPage->GetTransactionId();
 		$sTempId = utils::GetUploadTempId($iTransactionId);
-		$sIsDeleteEnabled = $bDeleteEnabled ? 'true' : 'false';
-		$sClass = get_class($oObject);
+		$sIsDeleteEnabled = 'true'; // always true for the console !
+		// For portal, see sources/renderer/bootstrap/fieldrenderer/bsfileuploadfieldrenderer.class.inc.php
+		$sClass = get_class($this->oObject);
 		$sDeleteBtn = Dict::S('Attachments:DeleteBtn');
-		$oPage->add_script(
+		$this->oPage->add_script(
 			<<<EOF
 	function RemoveAttachment(att_id)
 	{
@@ -772,16 +815,16 @@ class IconAttachmentsRenderer implements iAttachmentsRendering
 	}
 EOF
 		);
-		$oPage->add('<span id="attachments">');
-		while ($oAttachment = $oAttachmentsSet->Fetch())
+		$this->oPage->add('<span id="attachments">');
+		while ($oAttachment = $this->oAttachmentsSet->Fetch())
 		{
-			$this->DisplayOneAttachment($oPage, $oAttachment);
+			$this->DisplayOneAttachment($this->oPage, $oAttachment);
 		}
 
 		// Display Temporary attachments
-		while ($oAttachment = $oTempAttachmentsSet->Fetch())
+		while ($oAttachment = $this->oTempAttachmentsSet->Fetch())
 		{
-			$this->DisplayOneAttachment($oPage, $oAttachment, true);
+			$this->DisplayOneAttachment($this->oPage, $oAttachment, true);
 		}
 
 
@@ -804,24 +847,24 @@ EOF
 					$oAttachment->Set('temp_id', $sTempId);
 					$oAttachment->DBUpdate();
 					// Display them
-					$this->DisplayOneAttachment($oPage, $oAttachment, true);
+					$this->DisplayOneAttachment($this->oPage, $oAttachment, true);
 				}
 			}
 		}
 
-		$oPage->add('</span>');
-		$oPage->add('<div style="clear:both"></div>');
+		$this->oPage->add('</span>');
+		$this->oPage->add('<div style="clear:both"></div>');
 		$iMaxUploadInBytes = AttachmentPlugIn::GetMaxUploadSize();
 		$sMaxUploadLabel = AttachmentPlugIn::GetMaxUpload();
 		$sFileTooBigLabel = Dict::Format('Attachments:Error:FileTooLarge', $sMaxUploadLabel);
 		$sFileTooBigLabelForJS = addslashes($sFileTooBigLabel);
-		$oPage->p(Dict::S('Attachments:AddAttachment').'<input type="file" name="file" id="file"><span style="display:none;" id="attachment_loading">&nbsp;<img src="../images/indicator.gif"></span> '.$sMaxUploadLabel);
+		$this->oPage->p(Dict::S('Attachments:AddAttachment').'<input type="file" name="file" id="file"><span style="display:none;" id="attachment_loading">&nbsp;<img src="../images/indicator.gif"></span> '.$sMaxUploadLabel);
 
-		$oPage->add_linked_script(utils::GetAbsoluteUrlAppRoot().'js/jquery.iframe-transport.js');
-		$oPage->add_linked_script(utils::GetAbsoluteUrlAppRoot().'js/jquery.fileupload.js');
+		$this->oPage->add_linked_script(utils::GetAbsoluteUrlAppRoot().'js/jquery.iframe-transport.js');
+		$this->oPage->add_linked_script(utils::GetAbsoluteUrlAppRoot().'js/jquery.fileupload.js');
 
 		$sDownloadLink = utils::GetAbsoluteUrlAppRoot().ATTACHMENT_DOWNLOAD_URL;
-		$oPage->add_ready_script(
+		$this->oPage->add_ready_script(
 			<<< EOF
     $('#file').fileupload({
 		url: GetAbsoluteUrlModulesRoot()+'itop-attachments/ajax.attachment.php',
@@ -933,29 +976,26 @@ EOF
 	}, 200 );
 EOF
 		);
-		$oPage->p('<span style="display:none;" id="attachment_loading">Loading, please wait...</span>');
-		$oPage->p('<input type="hidden" id="attachment_plugin" name="attachment_plugin"/>');
-		if ($bDeleteEnabled)
-		{
-			$oPage->add_ready_script('$(".attachment").hover( function() {$(this).children(":button").toggleClass("btn_hidden"); } );');
-		}
+		$this->oPage->p('<span style="display:none;" id="attachment_loading">Loading, please wait...</span>');
+		$this->oPage->p('<input type="hidden" id="attachment_plugin" name="attachment_plugin"/>');
+		$this->oPage->add_ready_script('$(".attachment").hover( function() {$(this).children(":button").toggleClass("btn_hidden"); } );');
 	}
 
 	/**
 	 * @inheritDoc
 	 */
-	public function RenderViewAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled)
+	public function RenderViewAttachmentsList()
 	{
-		$this->AddSharedMarkup($oPage);
+		$this->AddSharedMarkup($this->oPage);
 
-		$oPage->add('<span id="attachments">');
-		if ($oAttachmentsSet->Count() == 0)
+		$this->oPage->add('<span id="attachments">');
+		if ($this->oAttachmentsSet->Count() == 0)
 		{
-			$oPage->add(Dict::S('Attachments:NoAttachment'));
+			$this->oPage->add(Dict::S('Attachments:NoAttachment'));
 		}
 		else
 		{
-			while ($oAttachment = $oAttachmentsSet->Fetch())
+			while ($oAttachment = $this->oAttachmentsSet->Fetch())
 			{
 				$iAttId = $oAttachment->GetKey();
 				$oDoc = $oAttachment->Get('contents');
@@ -963,10 +1003,10 @@ EOF
 				$sIcon = utils::GetAbsoluteUrlAppRoot().AttachmentPlugIn::GetFileIcon($sFileName);
 				$sPreview = $oDoc->IsPreviewAvailable() ? 'true' : 'false';
 				$sDownloadLink = utils::GetAbsoluteUrlAppRoot().ATTACHMENT_DOWNLOAD_URL.$iAttId;
-				$oPage->add('<div class="attachment" id="attachment_'.$iAttId.'"><a data-preview="'.$sPreview.'" href="'.$sDownloadLink.'"><img src="'.$sIcon.'"><br/>'.$sFileName.'</a><input type="hidden" name="attachments[]" value="'.$iAttId.'"/><br/>&nbsp;&nbsp;</div>');
+				$this->oPage->add('<div class="attachment" id="attachment_'.$iAttId.'"><a data-preview="'.$sPreview.'" href="'.$sDownloadLink.'"><img src="'.$sIcon.'"><br/>'.$sFileName.'</a><input type="hidden" name="attachments[]" value="'.$iAttId.'"/><br/>&nbsp;&nbsp;</div>');
 			}
 		}
-		$oPage->add('</span>');
+		$this->oPage->add('</span>');
 
 	}
 
@@ -1045,12 +1085,12 @@ EOF
 }
 
 
-class TableDetailsAttachmentsRenderer implements iAttachmentsRendering
+class TableDetailsAttachmentsRenderer extends AbstractAttachmentsRendering
 {
 	/**
 	 * @inheritDoc
 	 */
-	public function RenderEditAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled)
+	public function RenderEditAttachmentsList()
 	{
 		// TODO: Implement RenderEditAttachmentsList() method.
 	}
@@ -1058,28 +1098,28 @@ class TableDetailsAttachmentsRenderer implements iAttachmentsRendering
 	/**
 	 * @inheritDoc
 	 */
-	public function RenderViewAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled)
+	public function RenderViewAttachmentsList()
 	{
-		$oPage->add('<table class="listResults attachmentsList">'.PHP_EOL);
-		$oPage->add('<thead>'.PHP_EOL);
-		$oPage->add('  <th>'.Dict::S('Attachments:File:Thumbnail').'</th>'.PHP_EOL);
-		$oPage->add('  <th>'.Dict::S('Attachments:File:Name').'</th>'.PHP_EOL);
-		$oPage->add('  <th>'.Dict::S('Attachments:File:Size').'</th>'.PHP_EOL);
-		$oPage->add('  <th>'.Dict::S('Attachments:File:Date').'</th>'.PHP_EOL);
-		$oPage->add('  <th>'.Dict::S('Attachments:File:MimeType').'</th>'.PHP_EOL);
-		$oPage->add('</thead>'.PHP_EOL);
-		$oPage->add('<tbody>'.PHP_EOL);
+		$this->oPage->add('<table class="listResults attachmentsList">'.PHP_EOL);
+		$this->oPage->add('<thead>'.PHP_EOL);
+		$this->oPage->add('  <th>'.Dict::S('Attachments:File:Thumbnail').'</th>'.PHP_EOL);
+		$this->oPage->add('  <th>'.Dict::S('Attachments:File:Name').'</th>'.PHP_EOL);
+		$this->oPage->add('  <th>'.Dict::S('Attachments:File:Size').'</th>'.PHP_EOL);
+		$this->oPage->add('  <th>'.Dict::S('Attachments:File:Date').'</th>'.PHP_EOL);
+		$this->oPage->add('  <th>'.Dict::S('Attachments:File:MimeType').'</th>'.PHP_EOL);
+		$this->oPage->add('</thead>'.PHP_EOL);
+		$this->oPage->add('<tbody>'.PHP_EOL);
 
 
-		if ($oAttachmentsSet->Count() == 0)
+		if ($this->oAttachmentsSet->Count() == 0)
 		{
-			$oPage->add(Dict::S('Attachments:NoAttachment'));
+			$this->oPage->add(Dict::S('Attachments:NoAttachment'));
 		}
 		else
 		{
 			$iMaxWidth = MetaModel::GetModuleSetting('itop-attachments', 'preview_max_width', 290);
 			$sPreviewNotAvailable = addslashes(Dict::S('Attachments:PreviewNotAvailable'));
-			$oPage->add_ready_script(
+			$this->oPage->add_ready_script(
 				<<<JS
 $(document).tooltip({
 	items: 'table.attachmentsList>tbody>tr>td:first-child>img',
@@ -1101,7 +1141,7 @@ $(document).tooltip({
 });
 JS
 			);
-			$oPage->add_style(
+			$this->oPage->add_style(
 				<<<CSS
 table.attachmentsList>tbody>tr>td:first-child {
 	text-align: center;
@@ -1110,8 +1150,8 @@ CSS
 			);
 
 			$bIsEven = false;
-			$aAttachmentsDate = AttachmentsHelper::GetAttachmentsDateAddedFromDb($oObject);
-			while ($oAttachment = $oAttachmentsSet->Fetch())
+			$aAttachmentsDate = AttachmentsHelper::GetAttachmentsDateAddedFromDb($this->oObject);
+			while ($oAttachment = $this->oAttachmentsSet->Fetch())
 			{
 				$sLineClass = '';
 				if ($bIsEven)
@@ -1143,17 +1183,17 @@ CSS
 					$sAttachmentThumbUrl = utils::GetAbsoluteUrlAppRoot().AttachmentPlugIn::GetFileIcon($sFileName);
 				}
 
-				$oPage->add("  <tr$sLineClass>".PHP_EOL);
-				$oPage->add('    <td><img'.$sIconClass.' style="max-height: 48px;" src="'.$sAttachmentThumbUrl.'"></td>'.PHP_EOL);
-				$oPage->add('    <td>'.$sFileName.'</td>'.PHP_EOL);
-				$oPage->add('    <td>'.$sFileSize.'</td>'.PHP_EOL);
-				$oPage->add('    <td>'.$sAttachmentDate.'</td>'.PHP_EOL);
-				$oPage->add('    <td>'.$sFileType.'</td>'.PHP_EOL);
-				$oPage->add('  </tr>'.PHP_EOL);
+				$this->oPage->add("  <tr$sLineClass>".PHP_EOL);
+				$this->oPage->add('    <td><img'.$sIconClass.' style="max-height: 48px;" src="'.$sAttachmentThumbUrl.'"></td>'.PHP_EOL);
+				$this->oPage->add('    <td>'.$sFileName.'</td>'.PHP_EOL);
+				$this->oPage->add('    <td>'.$sFileSize.'</td>'.PHP_EOL);
+				$this->oPage->add('    <td>'.$sAttachmentDate.'</td>'.PHP_EOL);
+				$this->oPage->add('    <td>'.$sFileType.'</td>'.PHP_EOL);
+				$this->oPage->add('  </tr>'.PHP_EOL);
 			}
 		}
 
-		$oPage->add('</tbody>'.PHP_EOL);
-		$oPage->add('</table>'.PHP_EOL);
+		$this->oPage->add('</tbody>'.PHP_EOL);
+		$this->oPage->add('</table>'.PHP_EOL);
 	}
 }
