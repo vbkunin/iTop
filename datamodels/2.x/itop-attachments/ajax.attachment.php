@@ -96,8 +96,13 @@ try
 		$oAttachment->DBDelete();
 	}
 	break;
-	
-	default:
+
+		case 'toggle_attachments_render':
+			$oPage->SetContentType('text/html');
+			$oPage->add('TUTU');
+			break;
+
+		default:
 		$oPage->p("Missing argument 'operation'");
 	}
 

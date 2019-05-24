@@ -262,6 +262,9 @@ class AttachmentPlugIn implements iApplicationUIExtension, iApplicationObjectExt
 		$oPage->add('<fieldset>');
 		$oPage->add('<legend>'.Dict::S('Attachments:FieldsetTitle').'</legend>');
 
+		$this->AddRenderSwitchHtml($oPage);
+
+		$oPage->add('<div id="AttachmentsContent">');
 		$bIsReadOnlyState = AttachmentPlugIn::IsReadonlyState($oObject, $oObject->GetState(),
 			AttachmentPlugIn::ENUM_GUI_BACKOFFICE);
 		if ($bEditMode && !$bIsReadOnlyState)
@@ -272,8 +275,42 @@ class AttachmentPlugIn implements iApplicationUIExtension, iApplicationObjectExt
 		{
 			$oAttachmentsRenderer->RenderViewAttachmentsList($oPage, $oSet, $oSetTemp, $oObject, $bEditMode, $this->m_bDeleteEnabled);
 		}
+		$oPage->add('</div>');
 
 		$oPage->add('</fieldset>');
+	}
+
+	private function AddRenderSwitchHtml($oPage)
+	{
+		$sRenderIcons = Dict::S('Attachments:Render:Icons'); //TODO add keys in dict files
+		$sRenderTable = Dict::S('Attachments:Render:Table');
+		$oPage->add(
+			<<<HTML
+		<div class="attachments-render-selector">
+			<div class="selector-label"><i class="fa fa-th-large" aria-hidden="true" title="$sRenderIcons"></i></div>
+			<label class="switch"><input type="checkbox" onchange="ToggleAttachmentsRenderSelector();" checked="">
+			<span class="slider round"></span></label>
+			<div class="selector-label"><i class="fa fa-align-justify" aria-hidden="true" title="$sRenderTable"></i></div>
+		</div>
+HTML
+		);
+
+		$oPage->add_script(
+			<<<EOF
+					function ToggleAttachmentsRenderSelector()
+					{
+						var sContentNode = '#AttachmentsContent';
+						$(sContentNode).block();
+						$.post(GetAbsoluteUrlModulesRoot()+'itop-attachments/ajax.attachment.php',
+						   { operation: 'toggle_attachments_render' },
+						   function(data) {
+							 $(sContentNode).html(data);
+							 $(sContentNode).unblock();
+							}
+						 );
+					}
+EOF
+		);
 	}
 
 	protected static function UpdateAttachments($oObject, $oChange = null)
@@ -1023,19 +1060,6 @@ class TableDetailsAttachmentsRenderer implements iAttachmentsRendering
 	 */
 	public function RenderViewAttachmentsList($oPage, $oAttachmentsSet, $oTempAttachmentsSet, $oObject, $bEditMode, $bDeleteEnabled)
 	{
-		$sRenderIcons = Dict::S('Attachments:Render:Icons'); //TODO add keys in dict files
-		$sRenderTable = Dict::S('Attachments:Render:Table');
-		$oPage->add(
-			<<<HTML
-<div class="attachments-render-selector">
-	<div class="selector-label"><i class="fa fa-th-large" aria-hidden="true" title="$sRenderIcons"></i></div>
-	<label class="switch"><input type="checkbox" onchange="ToggleAttachmentsRenderSelector();" checked="">
-	<span class="slider round"></span></label>
-	<div class="selector-label"><i class="fa fa-align-justify" aria-hidden="true" title="$sRenderTable"></i></div>
-</div>
-HTML
-		);
-
 		$oPage->add('<table class="listResults attachmentsList">'.PHP_EOL);
 		$oPage->add('<thead>'.PHP_EOL);
 		$oPage->add('  <th>'.Dict::S('Attachments:File:Thumbnail').'</th>'.PHP_EOL);

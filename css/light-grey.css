@@ -2295,6 +2295,9 @@ a.summary, a.summary:hover {
 .attachments-render-selector .switch {
   vertical-align: super;
 }
+.attachments-render-selector .slider {
+  background-color: #ea7d1e;
+}
 #DashboardMenu {
   display: block;
   float: right;
