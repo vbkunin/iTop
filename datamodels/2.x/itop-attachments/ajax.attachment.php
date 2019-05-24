@@ -139,13 +139,11 @@ try
 			appUserPreferences::UnsetPref('attachements_render_icons');
 			appUserPreferences::SetPref('attachements_render_icons', $bAttachmentsRenderIcons);
 			RenderAttachments($oPage, $bAttachmentsRenderIcons);
-
 			break;
 
 		case 'refresh_attachments_render':
 			$bAttachmentsRenderIcons = appUserPreferences::GetPref('attachements_render_icons', true);
 			RenderAttachments($oPage, $bAttachmentsRenderIcons);
-
 			break;
 
 		default:

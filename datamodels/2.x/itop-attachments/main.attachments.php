@@ -778,81 +778,17 @@ abstract class AbstractAttachmentsRendering
 	/**
 	 */
 	abstract public function RenderViewAttachmentsList();
-}
 
-
-class IconAttachmentsRenderer extends AbstractAttachmentsRendering
-{
 	/**
-	 * @inheritDoc
+	 * @param $sTempId
+	 * @param $sClass
+	 *
+	 * @param $sId
+	 *
+	 * @throws \Exception
 	 */
-	public function RenderEditAttachmentsList()
+	protected function AddUploadButton($sTempId, $sClass, $sId)
 	{
-		$this->AddSharedMarkup($this->oPage);
-
-		$iTransactionId = $this->oPage->GetTransactionId();
-		$sTempId = utils::GetUploadTempId($iTransactionId);
-		$sIsDeleteEnabled = 'true'; // always true for the console !
-		// For portal, see sources/renderer/bootstrap/fieldrenderer/bsfileuploadfieldrenderer.class.inc.php
-		$sClass = get_class($this->oObject);
-		$sDeleteBtn = Dict::S('Attachments:DeleteBtn');
-		$this->oPage->add_script(
-			<<<EOF
-	function RemoveAttachment(att_id)
-	{
-		var bDelete = true;
-		if ($('#display_attachment_'+att_id).hasClass('image-in-use'))
-		{
-				bDelete = window.confirm('This image is used in a description. Delete it anyway?');
-		}
-		if (bDelete)
-		{
-			$('#attachment_'+att_id).attr('name', 'removed_attachments[]');
-			$('#display_attachment_'+att_id).hide();
-			$('#attachment_plugin').trigger('remove_attachment', [att_id]);
-		}
-		return false; // Do not submit the form !
-	}
-EOF
-		);
-		$this->oPage->add('<span id="attachments">');
-		while ($oAttachment = $this->oAttachmentsSet->Fetch())
-		{
-			$this->DisplayOneAttachment($this->oPage, $oAttachment);
-		}
-
-		// Display Temporary attachments
-		while ($oAttachment = $this->oTempAttachmentsSet->Fetch())
-		{
-			$this->DisplayOneAttachment($this->oPage, $oAttachment, true);
-		}
-
-
-		// Suggested attachments are listed here but treated as temporary
-		$aDefault = utils::ReadParam('default', array(), false, 'raw_data');
-		if (array_key_exists('suggested_attachments', $aDefault))
-		{
-			$sSuggestedAttachements = $aDefault['suggested_attachments'];
-			if (is_array($sSuggestedAttachements))
-			{
-				$sSuggestedAttachements = implode(',', $sSuggestedAttachements);
-			}
-			$oSearch = DBObjectSearch::FromOQL("SELECT Attachment WHERE id IN($sSuggestedAttachements)");
-			$oSet = new DBObjectSet($oSearch, array());
-			if ($oSet->Count() > 0)
-			{
-				while ($oAttachment = $oSet->Fetch())
-				{
-					// Mark the attachments as temporary attachments for the current object/form
-					$oAttachment->Set('temp_id', $sTempId);
-					$oAttachment->DBUpdate();
-					// Display them
-					$this->DisplayOneAttachment($this->oPage, $oAttachment, true);
-				}
-			}
-		}
-
-		$this->oPage->add('</span>');
 		$this->oPage->add('<div style="clear:both"></div>');
 		$iMaxUploadInBytes = AttachmentPlugIn::GetMaxUploadSize();
 		$sMaxUploadLabel = AttachmentPlugIn::GetMaxUpload();
@@ -864,32 +800,30 @@ EOF
 		$this->oPage->add_linked_script(utils::GetAbsoluteUrlAppRoot().'js/jquery.fileupload.js');
 
 		$sDownloadLink = utils::GetAbsoluteUrlAppRoot().ATTACHMENT_DOWNLOAD_URL;
+
+
 		$this->oPage->add_ready_script(
-			<<< EOF
+			<<< JS
+	function RefreshAttachmentsRender()
+	{
+		var sContentNode = '#AttachmentsContent';
+		$(sContentNode).block();
+		$.post(GetAbsoluteUrlModulesRoot()+'itop-attachments/ajax.attachment.php',
+		   { operation: 'refresh_attachments_render', objclass: '$sClass', objkey: $sId, edit_mode: 1},
+		   function(data) {
+			 $(sContentNode).html(data);
+			 $(sContentNode).unblock();
+			}
+		 );
+	}
+	
+	
     $('#file').fileupload({
 		url: GetAbsoluteUrlModulesRoot()+'itop-attachments/ajax.attachment.php',
 		formData: { operation: 'add', temp_id: '$sTempId', obj_class: '$sClass' },
         dataType: 'json',
 		pasteZone: null, // Don't accept files via Chrome's copy/paste
-        done: function (e, data) {
-			if(typeof(data.result.error) != 'undefined')
-			{
-				if(data.result.error != '')
-				{
-					alert(data.result.error);
-				}
-				else
-				{
-					var sDownloadLink = '$sDownloadLink'+data.result.att_id;
-					$('#attachments').append('<div class="attachment" id="display_attachment_'+data.result.att_id+'"><a data-preview="'+data.result.preview+'" href="'+sDownloadLink+'"><img src="'+data.result.icon+'"><br/>'+data.result.msg+'<input id="attachment_'+data.result.att_id+'" type="hidden" name="attachments[]" value="'+data.result.att_id+'"/></a><br/><input type="button" class="btn_hidden" value="{$sDeleteBtn}" onClick="RemoveAttachment('+data.result.att_id+');"/></div>');
-					if($sIsDeleteEnabled)
-					{
-						$('#display_attachment_'+data.result.att_id).hover( function() { $(this).children(':button').toggleClass('btn_hidden'); } );
-					}
-					$('#attachment_plugin').trigger('add_attachment', [data.result.att_id, data.result.msg, false /* inline image */]);
-				}
-			}
-        },
+        done: RefreshAttachmentsRender,
 	    send: function(e, data){
 	        // Don't send attachment if size is greater than PHP post_max_size, otherwise it will break the request and all its parameters (\$_REQUEST, \$_POST, ...)
 	        // Note: We loop on the files as the data structures is an array but in this case, we only upload 1 file at a time.
@@ -974,10 +908,86 @@ EOF
 		});
 		$('.image-in-use-wrapper').append('<div style="position:absolute;top:0;left:0;"><img src="../images/transp-lock.png"></div>');
 	}, 200 );
-EOF
+JS
 		);
 		$this->oPage->p('<span style="display:none;" id="attachment_loading">Loading, please wait...</span>');
 		$this->oPage->p('<input type="hidden" id="attachment_plugin" name="attachment_plugin"/>');
+	}
+}
+
+
+class IconAttachmentsRenderer extends AbstractAttachmentsRendering
+{
+	/**
+	 * @inheritDoc
+	 */
+	public function RenderEditAttachmentsList()
+	{
+		$this->AddSharedMarkup($this->oPage);
+
+		$iTransactionId = $this->oPage->GetTransactionId();
+		$sTempId = utils::GetUploadTempId($iTransactionId);
+		$sIsDeleteEnabled = 'true'; // always true for the console !
+		// For portal, see sources/renderer/bootstrap/fieldrenderer/bsfileuploadfieldrenderer.class.inc.php
+		$sClass = get_class($this->oObject);
+		$this->oPage->add_script(
+			<<<EOF
+	function RemoveAttachment(att_id)
+	{
+		var bDelete = true;
+		if ($('#display_attachment_'+att_id).hasClass('image-in-use'))
+		{
+				bDelete = window.confirm('This image is used in a description. Delete it anyway?');
+		}
+		if (bDelete)
+		{
+			$('#attachment_'+att_id).attr('name', 'removed_attachments[]');
+			$('#display_attachment_'+att_id).hide();
+			$('#attachment_plugin').trigger('remove_attachment', [att_id]);
+		}
+		return false; // Do not submit the form !
+	}
+EOF
+		);
+		$this->oPage->add('<span id="attachments">');
+		while ($oAttachment = $this->oAttachmentsSet->Fetch())
+		{
+			$this->DisplayOneAttachment($this->oPage, $oAttachment);
+		}
+
+		// Display Temporary attachments
+		while ($oAttachment = $this->oTempAttachmentsSet->Fetch())
+		{
+			$this->DisplayOneAttachment($this->oPage, $oAttachment, true);
+		}
+
+
+		// Suggested attachments are listed here but treated as temporary
+		$aDefault = utils::ReadParam('default', array(), false, 'raw_data');
+		if (array_key_exists('suggested_attachments', $aDefault))
+		{
+			$sSuggestedAttachements = $aDefault['suggested_attachments'];
+			if (is_array($sSuggestedAttachements))
+			{
+				$sSuggestedAttachements = implode(',', $sSuggestedAttachements);
+			}
+			$oSearch = DBObjectSearch::FromOQL("SELECT Attachment WHERE id IN($sSuggestedAttachements)");
+			$oSet = new DBObjectSet($oSearch, array());
+			if ($oSet->Count() > 0)
+			{
+				while ($oAttachment = $oSet->Fetch())
+				{
+					// Mark the attachments as temporary attachments for the current object/form
+					$oAttachment->Set('temp_id', $sTempId);
+					$oAttachment->DBUpdate();
+					// Display them
+					$this->DisplayOneAttachment($this->oPage, $oAttachment, true);
+				}
+			}
+		}
+
+		$this->oPage->add('</span>');
+		$this->AddUploadButton($sTempId, $sClass, $this->oObject->GetKey());
 		$this->oPage->add_ready_script('$(".attachment").hover( function() {$(this).children(":button").toggleClass("btn_hidden"); } );');
 	}
 
