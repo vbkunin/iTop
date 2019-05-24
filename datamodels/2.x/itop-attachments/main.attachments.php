@@ -285,7 +285,7 @@ class AttachmentPlugIn implements iApplicationUIExtension, iApplicationObjectExt
 	 */
 	private function AddRenderSwitchHtml($oPage, $oObject, $bEditMode)
 	{
-		$sRenderIcons = Dict::S('Attachments:Render:Icons'); //TODO add keys in dict files
+		$sRenderIcons = Dict::S('Attachments:Render:Icons');
 		$sRenderTable = Dict::S('Attachments:Render:Table');
 		$bAttachmentsRenderIcons = appUserPreferences::GetPref('attachements_render_icons', true);
 		$sInputChecked = ($bAttachmentsRenderIcons ? '' : 'checked');
