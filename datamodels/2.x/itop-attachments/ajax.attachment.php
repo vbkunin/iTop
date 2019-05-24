@@ -29,6 +29,43 @@ require_once(APPROOT.'/application/application.inc.php');
 require_once(APPROOT.'/application/webpage.class.inc.php');
 require_once(APPROOT.'/application/ajaxwebpage.class.inc.php');
 
+/**
+ * @param \ajax_page $oPage
+ * @param $bAttachmentsRenderIcons
+ *
+ * @throws \ArchivedObjectException
+ * @throws \CoreException
+ * @throws \OQLException
+ */
+function RenderAttachments(ajax_page $oPage, $bAttachmentsRenderIcons)
+{
+	$sClass = utils::ReadParam('objclass', '');
+	$sId = utils::ReadParam('objkey', '');
+	$oObject = MetaModel::GetObject($sClass, $sId);
+	$bEditMode = utils::ReadParam('edit_mode', 0);
+
+	$oPage->SetContentType('text/html');
+
+	if ($bAttachmentsRenderIcons)
+	{
+		$oAttachmentsRenderer = new IconAttachmentsRenderer($oPage, $oObject);
+	}
+	else
+	{
+		$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer($oPage, $oObject);
+	}
+
+	$bIsReadOnlyState = AttachmentPlugIn::IsReadonlyState($oObject, $oObject->GetState(), AttachmentPlugIn::ENUM_GUI_BACKOFFICE);
+	if ($bEditMode && !$bIsReadOnlyState)
+	{
+		$oAttachmentsRenderer->RenderEditAttachmentsList();
+	}
+	else
+	{
+		$oAttachmentsRenderer->RenderViewAttachmentsList();
+	}
+}
+
 try
 {
 	require_once(APPROOT.'/application/startup.inc.php');
@@ -98,35 +135,16 @@ try
 	break;
 
 		case 'toggle_attachments_render':
-			$sClass = utils::ReadParam('objclass', '');
-			$sId = utils::ReadParam('objkey', '');
-			$oObject = MetaModel::GetObject($sClass, $sId);
-			$bEditMode = utils::ReadParam('edit_mode', 0);
-
-			$bAttachmentsRenderIcons = !(appUserPreferences::GetPref('attachements_render_icons', true));
+			$bAttachmentsRenderIcons = !appUserPreferences::GetPref('attachements_render_icons', true);
 			appUserPreferences::UnsetPref('attachements_render_icons');
 			appUserPreferences::SetPref('attachements_render_icons', $bAttachmentsRenderIcons);
+			RenderAttachments($oPage, $bAttachmentsRenderIcons);
 
-			$oPage->SetContentType('text/html');
+			break;
 
-			if ($bAttachmentsRenderIcons)
-			{
-				$oAttachmentsRenderer = new IconAttachmentsRenderer($oPage, $oObject);
-			}
-			else
-			{
-				$oAttachmentsRenderer = new TableDetailsAttachmentsRenderer($oPage, $oObject);
-			}
-
-			$bIsReadOnlyState = AttachmentPlugIn::IsReadonlyState($oObject, $oObject->GetState(), AttachmentPlugIn::ENUM_GUI_BACKOFFICE);
-			if ($bEditMode && !$bIsReadOnlyState)
-			{
-				$oAttachmentsRenderer->RenderEditAttachmentsList();
-			}
-			else
-			{
-				$oAttachmentsRenderer->RenderViewAttachmentsList();
-			}
+		case 'refresh_attachments_render':
+			$bAttachmentsRenderIcons = appUserPreferences::GetPref('attachements_render_icons', true);
+			RenderAttachments($oPage, $bAttachmentsRenderIcons);
 
 			break;
 
